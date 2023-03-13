@@ -1,10 +1,31 @@
 const printf = require('printf');
 const formData = require('form-data');
 const Mailgun = require('mailgun.js');
+const moment = require('moment');
 const helpers = require('../helpers');
-const fs = require("fs");
+const MVKConnector = require('../libs/mvk-connector');
 
+const fs = require("fs");
+const S3Uploader = require("../S3Uploader");
+const {v4: uuidv4} = require("uuid");
 const fsPromises = require('fs').promises;
+
+async function sendAISReplacement(fileName, session) {
+    await S3Uploader(fileName, `replacement-verification-docs`);
+
+    await MVKConnector.sendReplacementData({
+        "abo": session.account.toString(),
+        "numku": session.currentCounterNum.toString(),
+        "date_replace": session.sendDocsAnswers[0],
+        "readings_remove": parseInt(session.sendDocsAnswers[1]),
+        "readings_check": parseInt(session.sendDocsAnswers[4]),
+        "readings_current": parseInt(session.sendDocsAnswers[6]),
+        "date_check": session.sendDocsAnswers[5],
+        "pu_num": session.sendDocsAnswers[3].toString(),
+        "photo_url": `${process.env.DOCS_URL_PREFIX}${fileName}`
+    }, session);
+}
+
 
 function sendEmailReplacement(fileName, session) {
     const mailgun = new Mailgun(formData);
@@ -54,20 +75,29 @@ module.exports = {
                     text: session.phrases.getString('dont_understand') + ' ' + session.phrases.getString(`send_docs_replacement_q${session.sendDocsQuestion}`)
                 });
             } else {
-                if (session.sendDocsQuestion === 1) {
-                    session.sendDocsAnswers = [];
-                    const result = /^[0-3]\d\.[0-1]\d\.[1-2]\d\d\d/.test(message);
-                    if (!result) {
+                if (session.sendDocsQuestion === 1 || session.sendDocsQuestion === 6) {
+                    if (session.sendDocsQuestion === 1) {
+                        session.sendDocsAnswers = [];
+                    }
+                    const replacementDate = moment(message, 'DD-MM-YYYY');
+                    const dateIsOk = /^[0-3]\d\.[0-1]\d\.[1-2]\d\d\d/.test(message);
+                    if (!replacementDate.isValid() || !dateIsOk || replacementDate.isAfter(moment())) {
                         resolve({
                             text: session.phrases.getString('bad_date_format')
                         });
                         return;
+                    } else {
+                        message = replacementDate.format('YYYY-MM-DD');
                     }
                 }
 
                 if (session.sendDocsQuestion !== 8) {
                     session.sendDocsAnswers.push(message);
                     session.sendDocsQuestion++;
+                    if (session.sendDocsQuestion === 3) {
+                        session.sendDocsAnswers.push(null);
+                        session.sendDocsQuestion++;
+                    }
                     resolve({
                         text: session.phrases.getString(`send_docs_replacement_q${session.sendDocsQuestion}`)
                     });
@@ -102,13 +132,18 @@ module.exports = {
         });
     },
 
-
     photo: async (session, photoBuffer, logLabel) => {
         return new Promise(async (resolve, reject) => {
             if (session.sendDocsQuestion === 8) {
-                fs.writeFileSync(`${session.id}.jpg`, photoBuffer);
+                const fileName = `${uuidv4()}.jpg`
+                fs.writeFileSync(fileName, photoBuffer);
                 await session.stat.removeVerificationSession(session);
-                sendEmailReplacement(`${session.id}.jpg`, session);
+                //sendEmailReplacement(fileName, session);
+                await sendAISReplacement(fileName, session);
+                fs.unlinkSync(fileName);
+
+                session.context = 'input_counter_num';
+                session.errorCode = 0;
                 const leftCounters = session.countersData.getLeftCounters();
                 if (leftCounters > 0) {
                     resolve({
