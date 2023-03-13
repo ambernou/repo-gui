@@ -172,22 +172,50 @@ module.exports = {
                 session.context = 'input_counter_num';
                 session.errorCode = 0;
                 const leftCounters = session.countersData.getLeftCounters();
-                if (leftCounters > 0) {
-                    resolve({
-                        text:
-                            [
+                if (session.branch === 'meters_data') {
+                    if (leftCounters > 0) {
+                        session.failCount = 0;
+                        session.context = 'input_counter_num';
+                        session.errorCode = 0;
+                        resolve({
+                            text:
+                                [
+                                    session.phrases.getString('send_docs_verification_ok'),
+                                    printf(session.phrases.getString('left_counters'), `${leftCounters} ${helpers.declOfNum(leftCounters, ['водопроводному вводу', 'водопроводным вводам', 'водопроводным вводам'])}`)
+                                ]
+                        });
+                    } else {
+                        resolve({
+                            isFinal: true,
+                            text: [
                                 session.phrases.getString('send_docs_verification_ok'),
-                                printf(session.phrases.getString('left_counters'), `${leftCounters} ${helpers.declOfNum(leftCounters, ['водопроводному вводу', 'водопроводным вводам', 'водопроводным вводам'])}`)
+                                session.phrases.getString('last_counter')
                             ]
-                    });
-                } else {
-                    resolve({
-                        isFinal: true,
-                        text: [
-                            session.phrases.getString('send_docs_verification_ok'),
-                            session.phrases.getString('last_counter')
-                        ]
-                    });
+                        });
+                    }
+                }
+                if (session.branch === 'send_docs') {
+                    if (leftCounters > 0) {
+                        session.failCount = 0;
+                        session.success = true;
+                        session.context = 'send_docs_next_counter';
+                        resolve({
+                            text:
+                                [
+                                    session.phrases.getString('send_docs_verification_ok'),
+                                    printf(session.phrases.getString('send_docs_left_counters'), `${leftCounters} ${helpers.declOfNum(leftCounters, ['водопроводный ввод', 'водопроводных ввода', 'водопроводных вводов'])}`)
+                                ]
+                        });
+                    } else {
+                        session.success = true;
+                        resolve({
+                            isFinal: true,
+                            text: [
+                                session.phrases.getString('send_docs_verification_ok'),
+                                session.phrases.getString('send_docs_last_counter')
+                            ]
+                        });
+                    }
                 }
             } else {
                 resolve({
