@@ -103,24 +103,51 @@ module.exports = {
                     });
                 } else {
                     if (message.toLowerCase() === 'нет возможности') {
-                        await session.stat.saveVerificationSession(session, 'verification');
+                        await session.stat.saveVerificationSession(session, 'replacement');
                         const leftCounters = session.countersData.getLeftCounters();
-                        if (leftCounters > 0) {
-                            resolve({
-                                text:
-                                    [
+                        if (session.branch === 'meters_data') {
+                            if (leftCounters > 0) {
+                                session.failCount = 0;
+                                session.context = 'input_counter_num';
+                                resolve({
+                                    text:
+                                        [
+                                            session.phrases.getString('send_docs_replacement_q8_no'),
+                                            printf(session.phrases.getString('left_counters'), `${leftCounters} ${helpers.declOfNum(leftCounters, ['водопроводному вводу', 'водопроводным вводам', 'водопроводным вводам'])}`)
+                                        ]
+                                });
+                            } else {
+                                resolve({
+                                    isFinal: true,
+                                    text: [
                                         session.phrases.getString('send_docs_replacement_q8_no'),
-                                        printf(session.phrases.getString('left_counters'), `${leftCounters} ${helpers.declOfNum(leftCounters, ['водопроводному вводу', 'водопроводным вводам', 'водопроводным вводам'])}`)
+                                        session.phrases.getString('last_counter')
                                     ]
-                            });
-                        } else {
-                            resolve({
-                                isFinal: true,
-                                text: [
-                                    session.phrases.getString('send_docs_replacement_q8_no'),
-                                    session.phrases.getString('last_counter')
-                                ]
-                            });
+                                });
+                            }
+                        }
+                        if (session.branch === 'send_docs') {
+                            if (leftCounters > 0) {
+                                session.failCount = 0;
+                                session.success = false;
+                                session.context = 'send_docs_next_counter';
+                                resolve({
+                                    text:
+                                        [
+                                            session.phrases.getString('send_docs_replacement_q8_no'),
+                                            printf(session.phrases.getString('send_docs_left_counters'), `${leftCounters} ${helpers.declOfNum(leftCounters, ['водопроводный ввод', 'водопроводных ввода', 'водопроводных вводов'])}`)
+                                        ]
+                                });
+                            } else {
+                                session.success = false;
+                                resolve({
+                                    isFinal: true,
+                                    text: [
+                                        session.phrases.getString('send_docs_replacement_q8_no'),
+                                        session.phrases.getString('send_docs_last_counter')
+                                    ]
+                                });
+                            }
                         }
                     } else {
                         resolve({
